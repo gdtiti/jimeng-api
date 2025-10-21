@@ -67,9 +67,22 @@ export async function acquireToken(refreshToken: string): Promise<string> {
 }
 
 /**
- * 生成cookie
+ * 生成cookie - 支持复杂Cookie格式
  */
 export function generateCookie(refreshToken: string) {
+  // 检查是否是复杂Cookie格式（包含.....分隔符）
+  if (refreshToken.includes('.....')) {
+    // 复杂Cookie格式，直接使用并确保格式正确
+    return formatComplexCookie(refreshToken);
+  }
+
+  // 检查是否是标准Cookie格式（包含;分隔符）
+  if (refreshToken.includes(';') && refreshToken.includes('=')) {
+    // 标准Cookie格式，直接使用
+    return refreshToken;
+  }
+
+  // 简单Token格式（向后兼容）
   const isUS = refreshToken.toLowerCase().startsWith('us-');
   const token = isUS ? refreshToken.substring(3) : refreshToken;
   return [
@@ -85,6 +98,161 @@ export function generateCookie(refreshToken: string) {
     `sessionid_ss=${token}`,
     `sid_tt=${token}`
   ].join("; ");
+}
+
+/**
+ * 智能检测地区和提取token - 支持复杂Cookie格式
+ */
+function detectRegionAndToken(cookieString: string): { isUS: boolean; token: string } {
+  // 1. 检查复杂Cookie格式
+  if (cookieString.includes('.....')) {
+    return parseComplexCookie(cookieString);
+  }
+
+  // 2. 检查标准Cookie格式
+  if (cookieString.includes(';') && cookieString.includes('=')) {
+    return parseStandardCookie(cookieString);
+  }
+
+  // 3. 简单Token格式（向后兼容）
+  const isUS = cookieString.toLowerCase().startsWith('us-');
+  const token = isUS ? cookieString.substring(3) : cookieString;
+  return { isUS, token };
+}
+
+/**
+ * 解析复杂Cookie格式
+ */
+function parseComplexCookie(cookieString: string): { isUS: boolean; token: string } {
+  try {
+    const cookieItems = cookieString.split('.....').filter(item => item.trim());
+
+    // 检查是否有capcut_locale字段
+    const localeItem = cookieItems.find(item => item.includes('capcut_locale='));
+    if (localeItem) {
+      const locale = localeItem.split('=')[1];
+      const isUS = locale === 'en';
+      logger.info(`复杂Cookie地区检测: capcut_locale=${locale}, isUS=${isUS}`);
+
+      // 提取token（优先使用sessionid）
+      const sessionidItem = cookieItems.find(item => item.includes('sessionid='));
+      const sidTtItem = cookieItems.find(item => item.includes('sid_tt='));
+      const token = sessionidItem ?
+        sessionidItem.split('=')[1] :
+        (sidTtItem ? sidTtItem.split('=')[1] : '');
+
+      return { isUS, token };
+    }
+
+    // 如果没有capcut_locale字段，降级处理
+    logger.warn('复杂Cookie中未找到capcut_locale字段，使用默认检测逻辑');
+    return { isUS: false, token: '' };
+
+  } catch (error) {
+    logger.error(`解析复杂Cookie失败: ${error.message}`);
+    return { isUS: false, token: '' };
+  }
+}
+
+/**
+ * 解析标准Cookie格式
+ */
+function parseStandardCookie(cookieString: string): { isUS: boolean; token: string } {
+  try {
+    const cookieItems = cookieString.split(';').filter(item => item.trim());
+
+    // 检查是否有capcut_locale字段
+    const localeItem = cookieItems.find(item => item.trim().includes('capcut_locale='));
+    if (localeItem) {
+      const locale = localeItem.split('=')[1];
+      const isUS = locale === 'en';
+      logger.info(`标准Cookie地区检测: capcut_locale=${locale}, isUS=${isUS}`);
+
+      // 提取token
+      const sessionidItem = cookieItems.find(item => item.trim().includes('sessionid='));
+      const sidTtItem = cookieItems.find(item => item.trim().includes('sid_tt='));
+      const token = sessionidItem ?
+        sessionidItem.split('=')[1] :
+        (sidTtItem ? sidTtItem.split('=')[1] : '');
+
+      return { isUS, token };
+    }
+
+    // 如果没有capcut_locale字段，检查其他地区标识
+    const storeRegionItem = cookieItems.find(item =>
+      item.trim().includes('store-region=') || item.trim().includes('store_region=')
+    );
+    if (storeRegionItem) {
+      const region = storeRegionItem.split('=')[1];
+      const isUS = region === 'us';
+      logger.info(`标准Cookie地区检测: store-region=${region}, isUS=${isUS}`);
+    }
+
+    return { isUS: false, token: '' };
+
+  } catch (error) {
+    logger.error(`解析标准Cookie失败: ${error.message}`);
+    return { isUS: false, token: '' };
+  }
+}
+
+/**
+ * 格式化复杂Cookie字符串
+ */
+function formatComplexCookie(cookieString: string): string {
+  try {
+    // 分割Cookie字段
+    const cookieItems = cookieString.split('.....')
+      .map(item => item.trim())
+      .filter(item => {
+        // 过滤掉空字段和没有值的字段
+        if (!item) return false;
+        if (!item.includes('=')) return false;
+        const [key, value] = item.split('=', 2);
+        return key && value; // 只保留有键和值的字段
+      });
+
+    // 检查是否包含必需字段
+    const hasSessionId = cookieItems.some(item => item.includes('sessionid='));
+    const hasSidTt = cookieItems.some(item => item.includes('sid_tt='));
+    const hasCapcutLocale = cookieItems.some(item => item.includes('capcut_locale='));
+
+    if (!hasSessionId || !hasSidTt) {
+      logger.warn(`复杂Cookie可能缺少必需字段: sessionid=${hasSessionId}, sid_tt=${hasSidTt}`);
+    }
+
+    // 验证并记录Cookie信息
+    logger.info(`处理复杂Cookie: 原始${cookieString.split('.....').length}个字段，有效${cookieItems.length}个字段`);
+    logger.info(`Cookie字段检查: sessionid=${hasSessionId}, sid_tt=${hasSidTt}, capcut_locale=${hasCapcutLocale}`);
+
+    // 转换为标准格式（用分号分隔）
+    const standardCookie = cookieItems.join('; ');
+
+    // 记录一些关键字段的值（不记录敏感信息）
+    const sessionIdItem = cookieItems.find(item => item.includes('sessionid='));
+    const sidTtItem = cookieItems.find(item => item.includes('sid_tt='));
+    const uidTtItem = cookieItems.find(item => item.includes('uid_tt='));
+
+    if (sessionIdItem) {
+      const sessionId = sessionIdItem.split('=')[1];
+      logger.info(`提取sessionid: ${sessionId.substring(0, 15)}...`);
+    }
+    if (sidTtItem) {
+      const sidTt = sidTtItem.split('=')[1];
+      logger.info(`提取sid_tt: ${sidTt.substring(0, 15)}...`);
+    }
+    if (uidTtItem) {
+      const uidTt = uidTtItem.split('=')[1];
+      logger.info(`提取uid_tt: ${uidTt.substring(0, 15)}...`);
+    }
+
+    return standardCookie;
+
+  } catch (error) {
+    logger.error(`格式化复杂Cookie失败: ${error.message}`);
+    // 降级处理：返回原始字符串
+    return cookieString;
+  }
 }
 
 /**
@@ -146,8 +314,9 @@ export async function request(
   refreshToken: string,
   options: AxiosRequestConfig & { noDefaultParams?: boolean } = {}
 ) {
-  const isUS = refreshToken.toLowerCase().startsWith('us-');
-  const token = await acquireToken(isUS ? refreshToken.substring(3) : refreshToken);
+  // 智能检测地区 - 支持复杂Cookie格式
+  const { isUS, token } = detectRegionAndToken(refreshToken);
+  const accessToken = await acquireToken(token);
   const deviceTime = util.unixTimestamp();
   const sign = util.md5(
     `9e2c|${uri.slice(-7)}|${PLATFORM_CODE}|${VERSION_CODE}|${deviceTime}||11ac`

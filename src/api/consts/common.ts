@@ -72,6 +72,13 @@ export const POLLING_CONFIG = {
   TIMEOUT_SECONDS: 900 // 15分钟超时
 };
 
+// 网络重试配置
+export const NETWORK_RETRY_CONFIG = {
+  MAX_RETRY_COUNT: 5,    // 增加重试次数
+  RETRY_DELAY: 2000,     // 重试延迟
+  NETWORK_TIMEOUT: 60000 // 网络超时60秒
+};
+
 // 支持的图片比例和分辨率
 export const RESOLUTION_OPTIONS = {
   "1k":{

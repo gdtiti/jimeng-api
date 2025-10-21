@@ -1,0 +1,199 @@
+# 即梦API配置示例
+# 复制此文件为 config.yml 并根据需要修改
+
+# 服务基础配置
+name: "jimeng-free-api"
+host: "0.0.0.0"
+port: 5566
+urlPrefix: ""
+
+# URL配置 - 支持多个地��用分号分隔
+# 策略选项: random(随机), round-robin(轮询), failover(故障转移)
+urls:
+  # 即梦中国服务URL
+  jimeng-cn:
+    name: "即梦中国"
+    urls: "https://jimeng.jianying.com"
+    strategy: "random"
+    timeout: 30000
+    retryCount: 3
+
+  # 即梦国际服务URL - 支持多个镜像地址
+  jimeng-us:
+    name: "即梦国际"
+    urls: "https://api-proxy-1.deno.dev/dreamina/us;https://dreamina-api.us.capcut.com;https://api.dreamina.ai/us;https://backup-api.dreamina.com/us"
+    strategy: "round-robin"
+    timeout: 30000
+    retryCount: 3
+
+  # ImageX中国服务URL
+  imagex-cn:
+    name: "ImageX中国"
+    urls: "https://imagex.bytedanceapi.com;https://imagex-alternate.bytedanceapi.com"
+    strategy: "failover"
+    timeout: 30000
+    retryCount: 3
+
+  # ImageX国际服务URL
+  imagex-us:
+    name: "ImageX国际"
+    urls: "https://imagex16-normal-us-ttp.capcutapi.us;https://imagex-backup.capcutapi.us"
+    strategy: "failover"
+    timeout: 30000
+    retryCount: 3
+
+  # 商业服务URL
+  commerce-us:
+    name: "商业服务国际"
+    urls: "https://commerce.us.capcut.com;https://commerce-backup.capcut.com"
+    strategy: "failover"
+    timeout: 30000
+    retryCount: 3
+
+# 认证配置
+auth:
+  # Cookie缓存时间（毫秒）
+  cacheTTL: 300000  # 5分钟
+
+  # 支持的token格式
+  supportedFormats:
+    # 新格式：cookie字符串（用"....."分隔）
+    - "cookie"
+    # 旧格式：refreshToken
+    - "token"
+
+# 请求配置
+request:
+  # 默认超时时间（毫秒）
+  timeout: 45000
+
+  # 重试配置
+  retry:
+    maxCount: 3
+    delay: 5000    # 基础延迟时间（毫秒）
+    backoff: 2    # 指数退避倍数
+
+# 日志配置
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json" # json, text
+
+  # 是否记录请求和响应详情
+  logRequests: true
+  logResponses: true
+
+  # 响应数据截断长度
+  responseTruncateLength: 500
+
+# 监控配置
+monitoring:
+  # 是否启用性能监控
+  enabled: true
+
+  # 指标收集间隔（秒）
+  metricsInterval: 60
+
+  # 健康检查配置
+  healthCheck:
+    enabled: true
+    interval: 300  # 5分钟
+    timeout: 5000
+
+# 安全配置
+security:
+  # 是否启用请求验证
+  validateRequests: true
+
+  # 最大文件大小（字节）
+  maxFileSize: 104857600  # 100MB
+
+  # 支持的文件类型
+  allowedFileTypes:
+    - "jpg"
+    - "jpeg"
+    - "png"
+    - "webp"
+    - "gif"
+    - "bmp"
+    - "tiff"
+    - "heic"
+    - "avif"
+
+# 缓存配置
+cache:
+  # 用户信息缓存时间（毫秒）
+  userInfoCache: 600000  # 10分钟
+
+  # 积分信息缓存时间（毫秒）
+  creditInfoCache: 30000  # 30秒
+
+  # 生成结果缓存时间（毫秒）
+  resultCache:
+    success: 3600000  # 1小时
+    failure: 300000   # 5分钟
+
+# 地区配置
+regions:
+  # 中国大陆配置
+  cn:
+    defaultLanguage: "zh-CN"
+    timezone: "Asia/Shanghai"
+    currency: "CNY"
+
+  # 国际配置
+  us:
+    defaultLanguage: "en-US"
+    timezone: "America/New_York"
+    currency: "USD"
+
+# 模型配置
+models:
+  # 图片生成模型
+  image:
+    default: "jimeng-4.0"
+    available:
+      - "jimeng-4.0"
+      - "jimeng-3.1"
+      - "jimeng-3.0"
+      - "jimeng-2.1"
+      - "jimeng-2.0-pro"
+      - "jimeng-2.0"
+      - "jimeng-1.4"
+      - "jimeng-xl-pro"
+
+  # 视频生成模型
+  video:
+    default: "jimeng-video-3.0"
+    available:
+      - "jimeng-video-3.0-pro"
+      - "jimeng-video-3.0"
+      - "jimeng-video-2.0"
+      - "jimeng-video-2.0-pro"
+
+# 功能开关
+features:
+  # 是否启用故障转移
+  enableFailover: true
+
+  # 是否启用请求缓存
+  enableRequestCache: true
+
+  # 是否启用性能监控
+  enablePerformanceMonitoring: true
+
+  # 是否启用智能重试
+  enableSmartRetry: true
+
+  # 是否启用批量操作
+  enableBatchOperations: true
+
+# 开发模式配置
+development:
+  # 是否启用调试模式
+  debug: false
+
+  # 是否启用模拟模式
+  mockMode: false
+
+  # 是否记录详细日志
+  verboseLogging: false

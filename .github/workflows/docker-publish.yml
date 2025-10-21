@@ -9,6 +9,36 @@ on:
     types: [published]
   # 手动触发：自动发现当前最新 vX.Y.Z，并与 latest 一起发布（同一构建）
   workflow_dispatch:
+    inputs:
+      publish_mode:
+        description: '发布模式 (latest/specific/cache_only/force_rebuild)'
+        required: false
+        default: 'latest'
+        type: string
+
+      specific_version:
+        description: '指定版本标签 (当选择 specific 模式时使用，格式: v1.2.3)'
+        required: false
+        type: string
+        default: ''
+
+      force_no_cache:
+        description: '禁用缓存 (强制重新构建)'
+        required: false
+        type: boolean
+        default: false
+
+      platforms:
+        description: '目标平台 (linux/amd64,linux/arm64/linux/amd64,linux/arm64)'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+        type: string
+
+      create_release:
+        description: '自动创建GitHub Release'
+        required: false
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -110,8 +140,8 @@ jobs:
             VCS_REF=${{ github.sha }}
             VERSION=${{ steps.version.outputs.VALUE }}
 
-  # 3) 手动触发：自动发现“当前最新的 vX.Y.Z”，一次构建推 latest + vX.Y.Z（同 digest）
-  manual-publish-latest:
+  # 3) 手动触发：支持多种发布模式的智能Docker发布
+  manual-publish:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -125,27 +155,65 @@ jobs:
       - name: Force IMAGE_NAME lowercase (GHCR requires lowercase)
         run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
+      - name: 📋 显示发布配置
+        run: |
+          echo "🚀 手动Docker发布配置："
+          echo "  发布模式: ${{ github.event.inputs.publish_mode || 'latest' }}"
+          echo "  指定版本: ${{ github.event.inputs.specific_version || '自动检测' }}"
+          echo "  禁用缓存: ${{ github.event.inputs.force_no_cache || 'false' }}"
+          echo "  目标平台: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}"
+          echo "  创建Release: ${{ github.event.inputs.create_release || 'false' }}"
+
       - name: Fetch all tags
         run: |
           git fetch --tags --force --prune --prune-tags
 
-      - name: Resolve latest semver tag (vX.Y.Z)
-        id: pick
+      - name: 🔍 解析版本标签
+        id: version
         shell: bash
         run: |
-          TAG=$(git tag -l 'v*' --sort=-v:refname | head -n 1)
-          if [[ -z "$TAG" ]]; then
-            echo "No tags found matching pattern v*"
-            exit 1
+          MODE="${{ github.event.inputs.publish_mode || 'latest' }}"
+          SPECIFIC="${{ github.event.inputs.specific_version || '' }}"
+
+          echo "发布模式: $MODE"
+
+          if [[ "$MODE" == "specific" && -n "$SPECIFIC" ]]; then
+            if [[ ! "$SPECIFIC" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "❌ 指定版本格式错误: $SPECIFIC"
+              echo "正确格式示例: v1.2.3"
+              exit 1
+            fi
+            echo "使用指定版本: $SPECIFIC"
+            echo "FULL=$SPECIFIC" >> "$GITHUB_OUTPUT"
+            echo "VER=${SPECIFIC#v}" >> "$GITHUB_OUTPUT"
+          else
+            # 自动检测最新版本
+            TAG=$(git tag -l 'v*' --sort=-v:refname | head -n 1)
+            if [[ -z "$TAG" ]]; then
+              echo "❌ 未找到版本标签"
+              exit 1
+            fi
+            if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "❌ 最新标签格式不正确: $TAG"
+              exit 1
+            fi
+            echo "自动检测到最新版本: $TAG"
+            echo "FULL=$TAG" >> "$GITHUB_OUTPUT"
+            echo "VER=${TAG#v}" >> "$GITHUB_OUTPUT"
           fi
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Latest tag is '$TAG' but not pure vX.Y.Z. Adjust logic if you want to allow pre-releases."
-            exit 1
+
+      - name: 🏗️ 设置缓存策略
+        id: cache
+        run: |
+          if [[ "${{ github.event.inputs.force_no_cache }}" == "true" ]]; then
+            echo "🚫 禁用缓存"
+            echo "CACHE_FROM=" >> "$GITHUB_OUTPUT"
+            echo "CACHE_TO=" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ 启用缓存"
+            echo "CACHE_FROM=type=gha" >> "$GITHUB_OUTPUT"
+            echo "CACHE_TO=type=gha,mode=max" >> "$GITHUB_OUTPUT"
           fi
-          VER="${TAG#v}"
-          echo "FULL=$TAG" >> "$GITHUB_OUTPUT"
-          echo "VER=$VER" >> "$GITHUB_OUTPUT"
-          echo "Resolved latest tag: $TAG"
 
       - uses: docker/setup-qemu-action@v3
 
@@ -162,25 +230,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata (manual latest + vX.Y.Z)
+      - name: 🔖 生成Docker标签
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest
-            type=raw,value=${{ steps.pick.outputs.FULL }}
+            type=raw,value=latest,enable=${{ github.event.inputs.publish_mode != 'cache_only' }}
+            type=raw,value=${{ steps.version.outputs.FULL }}
 
-      - name: Build and push (manual)
+      - name: 🚀 构建和发布Docker镜像
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event.inputs.publish_mode != 'cache_only' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: ${{ steps.cache.outputs.CACHE_FROM }}
+          cache-to: ${{ steps.cache.outputs.CACHE_TO }}
           build-args: |
             VCS_REF=${{ github.sha }}
-            VERSION=${{ steps.pick.outputs.VER }}
+            VERSION=${{ steps.version.outputs.VER }}

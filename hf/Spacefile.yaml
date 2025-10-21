@@ -1,0 +1,107 @@
+---
+title: 即梦API - AI图像和视频生成服务
+emoji: 🎨
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+license: mit
+app_port: 7860
+---
+
+# 即梦API - HuggingFace Space
+
+免费AI图像和视频生成服务，基于即��AI的逆向工程实现。
+
+## 🌟 主要功能
+
+- ✨ **AI图像生成**: 支持多种风格和分辨率
+- 🎬 **AI视频生成**: 智能视频内容生成
+- 🔄 **OpenAI兼容**: 提供标准API接口
+- 🌍 **多地区支持**: 中国版和国际版
+- 🍪 **智能Cookie处理**: 支持复杂Cookie解析
+
+## 🚀 快速开始
+
+1. 访问Web界面进行图像生成
+2. 使用API进行程序化调用
+3. 查看API文档了解详细用法
+
+## 📡 API端点
+
+- `GET /ping` - 健康检查
+- `GET /health` - 详细状态信息
+- `POST /v1/images/generations` - 图像生成
+- `POST /v1/videos/generations` - 视频生成
+- `GET /docs` - API文档
+
+## 🛠️ 技术栈
+
+- **后端**: Node.js + TypeScript
+- **框架**: Koa.js
+- **容器**: Docker
+- **部署**: HuggingFace Spaces
+
+## 📋 使用说明
+
+### 图像生成API
+
+```javascript
+const response = await fetch('https://your-space.hf.space/v1/images/generations', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer your-cookie-token'
+  },
+  body: JSON.stringify({
+    prompt: "美丽的少女，胶片感",
+    model: "jimeng-4.0",
+    size: "1024x1024",
+    n: 1
+  })
+});
+
+const result = await response.json();
+```
+
+### 支持的模型
+
+- `jimeng-4.0` - 标准高质量模型
+- `jimeng-4.0-visual` - 视觉增强版
+- `jimeng-4.0-anime` - 动漫风格
+
+### Cookie配置
+
+支持多种Cookie格式：
+- 复杂格式：`_tea_web_id=abc.....sessionid=xyz.....capcut_locale=en.....`
+- 标准格式：`sessionid=xyz; capcut_locale=en`
+- 简单格式：`us-your-token`
+
+## ⚠️ 使用限制
+
+- 免费版：CPU Basic (2核, 16GB内存)
+- 建议同时处理不超过5个生成任务
+- 大图像生成需要更长时间
+
+## 🔧 配置
+
+环境变量可通过Space设置页面配置：
+
+- `JIMENG_CN_URLS` - 中国版API地址
+- `JIMENG_US_URLS` - 国际版API地址
+- `DEFAULT_TOKEN_*` - 默认认证Token
+- `RATE_LIMIT_ENABLED` - 速率限制开关
+
+## 📊 性能
+
+- 响应时间：30-120秒（取决于图像大小）
+- 分辨率支持：1K, 2K, 4K
+- 并发处理：支持多任务处理
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request！
+
+## 📄 许可证
+
+MIT License
