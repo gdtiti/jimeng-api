@@ -27,8 +27,9 @@ export const DEFAULT_VIDEO_MODEL = "jimeng-video-3.0";
 
 // 草稿版本
 export const DRAFT_VERSION = "3.3.2";
+export const DRAFT_MIN_VERSION = "3.0.2";
 
-// 图像模型映射
+// 图像模型映射（国内站）
 export const IMAGE_MODEL_MAP = {
   "jimeng-4.0": "high_aes_general_v40",
   "jimeng-3.1": "high_aes_general_v30l_art_fangzhou:general_v3.0_18b",
@@ -38,6 +39,13 @@ export const IMAGE_MODEL_MAP = {
   "jimeng-2.0": "high_aes_general_v20:general_v2.0",
   "jimeng-1.4": "high_aes_general_v14:general_v1.4",
   "jimeng-xl-pro": "text2img_xl_sft"
+};
+
+// 图像模型映射（国际站）
+export const IMAGE_MODEL_MAP_US = {
+  "jimeng-4.0": "high_aes_general_v40",
+  "jimeng-3.0": "high_aes_general_v30l:general_v3.0_18b",
+  "nanobanana": "external_model_gemini_flash_image_v25",
 };
 
 // 视频模型映射

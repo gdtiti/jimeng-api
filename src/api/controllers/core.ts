@@ -10,8 +10,8 @@ import { createParser } from "eventsource-parser";
 import logger from "@/lib/logger.ts";
 import util from "@/lib/util.ts";
 import { JimengErrorHandler, JimengErrorResponse } from "@/lib/error-handler.ts";
-import { BASE_URL_DREAMINA_US } from "@/api/consts/dreamina.ts";
-import { 
+import { BASE_URL_DREAMINA_US, NANOBANANA_MODEL, SUPPORTED_US_MODELS } from "@/api/consts/dreamina.ts";
+import {
   BASE_URL_CN,
   BASE_URL_US_COMMERCE,
   DEFAULT_ASSISTANT_ID_CN,
@@ -20,7 +20,9 @@ import {
   REGION_CN,
   REGION_US,
   VERSION_CODE,
-  RETRY_CONFIG
+  RETRY_CONFIG,
+  IMAGE_MODEL_MAP,
+  IMAGE_MODEL_MAP_US
 } from "@/api/consts/common.ts";
 
 // 模型名称
@@ -103,7 +105,7 @@ export function generateCookie(refreshToken: string) {
 /**
  * 智能检测地区和提取token - 支持复杂Cookie格式
  */
-function detectRegionAndToken(cookieString: string): { isUS: boolean; token: string } {
+export function detectRegionAndToken(cookieString: string): { isUS: boolean; token: string } {
   // 1. 检查复杂Cookie格式
   if (cookieString.includes('.....')) {
     return parseComplexCookie(cookieString);

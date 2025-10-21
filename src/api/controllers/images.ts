@@ -4,11 +4,11 @@ import crypto from "crypto";
 import APIException from "@/lib/exceptions/APIException.ts";
 import EX from "@/api/consts/exceptions.ts";
 import util from "@/lib/util.ts";
-import { getCredit, receiveCredit, request } from "./core.ts";
+import { getCredit, receiveCredit, request, detectRegionAndToken } from "./core.ts";
 import logger from "@/lib/logger.ts";
 import { SmartPoller, PollingStatus } from "@/lib/smart-poller.ts";
-import { DEFAULT_IMAGE_MODEL, DRAFT_VERSION, IMAGE_MODEL_MAP, RESOLUTION_OPTIONS } from "@/api/consts/common.ts";
-import { BASE_URL_DREAMINA_US, BASE_URL_IMAGEX_US, AID_DREAMINA, WEB_VERSION as DREAMINA_WEB_VERSION, DA_VERSION as DREAMINA_DA_VERSION, AIGC_FEATURES as DREAMINA_AIGC_FEATURES } from "@/api/consts/dreamina.ts";
+import { DEFAULT_IMAGE_MODEL, DRAFT_VERSION, DRAFT_MIN_VERSION, IMAGE_MODEL_MAP, IMAGE_MODEL_MAP_US, RESOLUTION_OPTIONS, DEFAULT_ASSISTANT_ID_US, DEFAULT_ASSISTANT_ID_CN } from "@/api/consts/common.ts";
+import { BASE_URL_DREAMINA_US, BASE_URL_IMAGEX_US, AID_DREAMINA, WEB_VERSION as DREAMINA_WEB_VERSION, DA_VERSION as DREAMINA_DA_VERSION, AIGC_FEATURES as DREAMINA_AIGC_FEATURES, NANOBANANA_MODEL, SUPPORTED_US_MODELS } from "@/api/consts/dreamina.ts";
 import { createSignature } from "@/lib/aws-signature.ts";
 
 export const DEFAULT_MODEL = DEFAULT_IMAGE_MODEL;
@@ -33,8 +33,44 @@ function getResolutionParams(resolution: string = '2k', ratio: string = '1:1'): 
     resolution_type: resolution,
   };
 }
-export function getModel(model: string) {
-  return IMAGE_MODEL_MAP[model] || IMAGE_MODEL_MAP[DEFAULT_MODEL];
+/**
+ * 获取模型对应的API模型名称
+ * @param model 用户请求的模型名称
+ * @param isUS 是否为国际版
+ * @returns API模型名称
+ */
+export function getModel(model: string, isUS: boolean = false) {
+  const modelMap = isUS ? IMAGE_MODEL_MAP_US : IMAGE_MODEL_MAP;
+
+  if (isUS && !modelMap[model]) {
+    const supportedModels = Object.keys(modelMap).join(', ');
+    throw new Error(`国际版不支持模型 "${model}"。支持的模型: ${supportedModels}`);
+  }
+
+  return modelMap[model] || modelMap[DEFAULT_MODEL];
+}
+
+/**
+ * 验证模型是否支持
+ * @param model 模型名称
+ * @param isUS 是否为国际版
+ * @returns 是否支持该模型
+ */
+export function isModelSupported(model: string, isUS: boolean = false): boolean {
+  const modelMap = isUS ? IMAGE_MODEL_MAP_US : IMAGE_MODEL_MAP;
+  return model in modelMap;
+}
+
+/**
+ * 获取支持的模型列表
+ * @param isUS 是否为国际版
+ * @returns 支持的模型列表
+ */
+export function getSupportedModels(isUS: boolean = false): string[] {
+  if (isUS) {
+    return SUPPORTED_US_MODELS;
+  }
+  return Object.keys(IMAGE_MODEL_MAP);
 }
 
 function calculateCRC32(buffer: ArrayBuffer): string {
@@ -240,8 +276,8 @@ export async function generateImageComposition(
   },
   refreshToken: string
 ) {
-  const isUS = refreshToken.toLowerCase().startsWith('us-');
-  const model = getModel(_model);
+  const { isUS } = detectRegionAndToken(refreshToken);
+  const model = getModel(_model, isUS);
   const { width, height, image_ratio, resolution_type } = getResolutionParams(resolution, ratio);
   const imageCount = images.length;
   logger.info(`使用模型: ${_model} 映射模型: ${model} 图生图功能 ${imageCount}张图片 ${width}x${height} 精细度: ${sampleStrength}`);
@@ -501,10 +537,14 @@ export async function generateImages(
   },
   refreshToken: string
 ) {
-  const model = getModel(_model);
-  logger.info(`使用模型: ${_model} 映射模型: ${model} 分辨率: ${resolution} 比例: ${ratio} 精细度: ${sampleStrength}`);
+  // 检测地区（兼容旧格式和新格式）
+  const { isUS } = detectRegionAndToken(refreshToken);
+  logger.info(`检测地区: ${isUS ? '国际版' : '国内版'} (检测方式: 智能检测)`);
 
-  return await generateImagesInternal(_model, prompt, { ratio, resolution, sampleStrength, negativePrompt }, refreshToken);
+  const model = getModel(_model, isUS);
+  logger.info(`使用模型: ${_model} 映射模型: ${model} 地区: ${isUS ? '国际版' : '国内版'} 分辨率: ${resolution} 比例: ${ratio} 精细度: ${sampleStrength}`);
+
+  return await generateImagesInternal(_model, prompt, { ratio, resolution, sampleStrength, negativePrompt }, refreshToken, isUS);
 }
 
 async function generateImagesInternal(
@@ -521,10 +561,26 @@ async function generateImagesInternal(
     sampleStrength?: number;
     negativePrompt?: string;
   },
-  refreshToken: string
+  refreshToken: string,
+  isUS: boolean = false
 ) {
-  const model = getModel(_model);
-  const { width, height, image_ratio, resolution_type } = getResolutionParams(resolution, ratio);
+  const model = getModel(_model, isUS);
+
+  // nanobanana 模型特殊处理：固定使用1024x1024分辨率和2k清晰度
+  let width, height, image_ratio, resolution_type;
+  if (_model === 'nanobanana') {
+    logger.warn('nanobanana模型当前固定使用1024x1024分辨率和2k的清晰度，您输入的参数将被忽略。');
+    width = 1024;
+    height = 1024;
+    image_ratio = 1;
+    resolution_type = '2k';
+  } else {
+    const params = getResolutionParams(resolution, ratio);
+    width = params.width;
+    height = params.height;
+    image_ratio = params.image_ratio;
+    resolution_type = params.resolution_type;
+  }
 
   const { totalCredit, giftCredit, purchaseCredit, vipCredit } = await getCredit(refreshToken);
   if (totalCredit <= 0)
@@ -540,10 +596,11 @@ async function generateImagesInternal(
   );
 
   if (isJimeng40MultiImage) {
-    return await generateJimeng40MultiImages(_model, prompt, { ratio, resolution, sampleStrength, negativePrompt }, refreshToken);
+    return await generateJimeng40MultiImages(_model, prompt, { ratio, resolution, sampleStrength, negativePrompt }, refreshToken, isUS);
   }
 
   const componentId = util.uuid();
+  const submitId = util.uuid();
   const { aigc_data } = await request(
     "post",
     "/mweb/v1/aigc_draft/generate",
@@ -628,10 +685,13 @@ async function generateImagesInternal(
             },
           ],
         }),
+        http_common_info: {
+          aid: isUS ? DEFAULT_ASSISTANT_ID_US : DEFAULT_ASSISTANT_ID_CN
+        }
       },
     }
   );
-  const historyId = aigc_data.history_record_id;
+  const historyId = aigc_data?.history_record_id;
   if (!historyId)
     throw new APIException(EX.API_IMAGE_GENERATION_FAILED, "记录ID不存在");
 
@@ -743,9 +803,10 @@ async function generateJimeng40MultiImages(
     sampleStrength?: number;
     negativePrompt?: string;
   },
-  refreshToken: string
+  refreshToken: string,
+  isUS: boolean = false
 ) {
-  const model = getModel(_model);
+  const model = getModel(_model, isUS);
   const { width, height, image_ratio, resolution_type } = getResolutionParams(resolution, ratio);
 
   const targetImageCount = prompt.match(/(\d+)张/) ? parseInt(prompt.match(/(\d+)张/)[1]) : 4;

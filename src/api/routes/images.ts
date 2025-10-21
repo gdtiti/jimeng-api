@@ -2,8 +2,8 @@ import fs from "fs";
 import _ from "lodash";
 
 import Request from "@/lib/request/Request.ts";
-import { generateImages, generateImageComposition } from "@/api/controllers/images.ts";
-import { tokenSplit } from "@/api/controllers/core.ts";
+import { generateImages, generateImageComposition, isModelSupported, getSupportedModels } from "@/api/controllers/images.ts";
+import { tokenSplit, detectRegionAndToken } from "@/api/controllers/core.ts";
 import util from "@/lib/util.ts";
 
 export default {
@@ -29,8 +29,6 @@ export default {
         .validate("body.response_format", v => _.isUndefined(v) || _.isString(v))
         .validate("headers.authorization", _.isString);
 
-      const tokens = tokenSplit(request.headers.authorization);
-      const token = _.sample(tokens);
       const {
         model,
         prompt,
@@ -40,6 +38,16 @@ export default {
         sample_strength: sampleStrength,
         response_format,
       } = request.body;
+
+      const tokens = tokenSplit(request.headers.authorization);
+      const token = _.sample(tokens);
+
+      // 检测地区和验证模型支持
+      const { isUS } = detectRegionAndToken(token);
+      if (model && !isModelSupported(model, isUS)) {
+        const supportedModels = getSupportedModels(isUS);
+        throw new Error(`${isUS ? '国际版' : '国内版'}不支持模型 "${model}"。支持的模型: ${supportedModels.join(', ')}`);
+      }
 
       const responseFormat = _.defaultTo(response_format, "url");
       const imageUrls = await generateImages(model, prompt, {
@@ -132,9 +140,6 @@ export default {
         images = bodyImages.map((image: any) => _.isString(image) ? image : image.url);
       }
 
-      const tokens = tokenSplit(request.headers.authorization);
-      const token = _.sample(tokens);
-      
       const {
         model,
         prompt,
@@ -144,6 +149,16 @@ export default {
         sample_strength: sampleStrength,
         response_format,
       } = request.body;
+
+      const tokens = tokenSplit(request.headers.authorization);
+      const token = _.sample(tokens);
+
+      // 检测地区和验证模型支持
+      const { isUS } = detectRegionAndToken(token);
+      if (model && !isModelSupported(model, isUS)) {
+        const supportedModels = getSupportedModels(isUS);
+        throw new Error(`${isUS ? '国际版' : '国内版'}不支持模型 "${model}"。支持的模型: ${supportedModels.join(', ')}`);
+      }
 
       const responseFormat = _.defaultTo(response_format, "url");
       const resultUrls = await generateImageComposition(model, prompt, images, {
