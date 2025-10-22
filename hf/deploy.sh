@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# HuggingFace Space自动部署脚本
-echo "🚀 开始部署到HuggingFace Space..."
+# 即梦API HF部署脚本 - 基于预构建镜像
+echo "🎨 即梦API HuggingFace Space部署脚本"
+echo "=========================================="
 
 # 检查必要文件
 echo "📋 检查部署文件..."
@@ -16,15 +17,10 @@ done
 
 echo "✅ 所有必要文件已就绪"
 
-# 构建Node.js项目
-echo "🔨 构建Node.js项目..."
-if [ -d "../dist" ]; then
-    echo "✅ 找到现有dist目录"
-else
-    echo "📦 需要先构建dist目录"
-    echo "请运行: npm run build"
-    exit 1
-fi
+# 基于预构建镜像，无需本地构建
+echo "🐳 使用预构建Docker镜像: ghcr.io/gdtiti/jimeng-api:latest"
+echo "✅ 包含Nanobanana模型支持和复杂Cookie解析"
+echo "🔧 HF配置已适配预构建镜像"
 
 # 检查环境变量
 echo "🔍 检查环���变量..."
@@ -49,7 +45,9 @@ cat > deployment-info.json << EOF
     "ai-video-generation",
     "openai-compatible-api",
     "smart-cookie-parsing",
-    "multi-region-support"
+    "multi-region-support",
+    "nanobanana-model",
+    "prebuilt-docker-image"
   ]
 }
 EOF

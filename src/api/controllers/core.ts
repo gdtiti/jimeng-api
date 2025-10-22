@@ -33,6 +33,11 @@ const DEVICE_ID = Math.random() * 999999999999999999 + 7000000000000000000;
 const WEB_ID = Math.random() * 999999999999999999 + 7000000000000000000;
 // 用户ID
 const USER_ID = util.uuid(false);
+
+// 简单的Cookie缓存
+const cookieCache = new Map<string, { cookie: string; timestamp: number }>();
+const COOKIE_CACHE_TTL = 30 * 60 * 1000; // 30分钟
+
 // 伪装headers
 const FAKE_HEADERS = {
   Accept: "application/json, text/plain, */*",
@@ -100,6 +105,48 @@ export function generateCookie(refreshToken: string) {
     `sessionid_ss=${token}`,
     `sid_tt=${token}`
   ].join("; ");
+}
+
+/**
+ * 获取缓存的Cookie或生成新的Cookie
+ */
+function getCachedCookie(refreshToken: string): string {
+  const now = Date.now();
+  const cacheKey = refreshToken.substring(0, 50); // 使用前50个字符作为缓存键
+
+  // 检查缓存
+  const cached = cookieCache.get(cacheKey);
+  if (cached && (now - cached.timestamp) < COOKIE_CACHE_TTL) {
+    logger.debug(`Cookie缓存命中: ${cacheKey.substring(0, 15)}...`);
+    return cached.cookie;
+  }
+
+  // 缓存未命中或过期，生成新的Cookie
+  logger.debug(`Cookie缓存未命中，生成新的Cookie: ${cacheKey.substring(0, 15)}...`);
+  const newCookie = generateCookie(refreshToken);
+
+  // 缓存新的Cookie
+  cookieCache.set(cacheKey, {
+    cookie: newCookie,
+    timestamp: now
+  });
+
+  // 清理过期的缓存项
+  cleanupCookieCache();
+
+  return newCookie;
+}
+
+/**
+ * 清理过期的Cookie缓存
+ */
+function cleanupCookieCache(): void {
+  const now = Date.now();
+  for (const [key, value] of cookieCache.entries()) {
+    if (now - value.timestamp >= COOKIE_CACHE_TTL) {
+      cookieCache.delete(key);
+    }
+  }
 }
 
 /**
@@ -362,7 +409,7 @@ export async function request(
     Origin: origin,
     Referer: origin,
     Appid: aid,
-    Cookie: generateCookie(refreshToken),
+    Cookie: getCachedCookie(refreshToken),
     "Device-Time": deviceTime,
     Sign: sign,
     "Sign-Ver": "1",

@@ -785,8 +785,25 @@ async function generateImagesInternal(
   if (imageUrls.length === 0) {
     logger.error(`图像生成异常: item_list有 ${item_list.length} 个项目，但无法提取任何图片URL`);
     logger.error(`完整的item_list数据: ${JSON.stringify(item_list, null, 2)}`);
+
+    // 如果轮询状态是成功(50)但没有图片，仍然认为是成功的
+    if (pollingResult.status === 50) {
+      logger.warn(`轮询状态显示成功(50)但无法提取图片URL，返回空数组但标记为成功`);
+      return {
+        imageUrls: [],
+        status: 'success',
+        pollingStatus: pollingResult.status,
+        elapsedTime: pollingResult.elapsedTime
+      };
+    }
   }
-  return imageUrls;
+
+  return {
+    imageUrls,
+    status: 'success',
+    pollingStatus: pollingResult.status,
+    elapsedTime: pollingResult.elapsedTime
+  };
 }
 
 async function generateJimeng40MultiImages(

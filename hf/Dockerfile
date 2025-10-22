@@ -1,45 +1,41 @@
-# 使用Node.js 18作为基础镜像
-FROM node:18-slim
+# 使用预构建的即梦API镜像
+FROM ghcr.io/gdtiti/jimeng-api:latest
 
 # 设置工作目录
 WORKDIR /app
 
-# 设置环境变量
-ENV NODE_ENV=production
-ENV PORT=7860
-ENV HOST=0.0.0.0
-
-# 安装系统依赖
+# 安装Python和Flask用于HF Web界面
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制package文件
-COPY package*.json ./
+# 安装Python依赖
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-# 安装依赖
-RUN npm ci --only=production && npm cache clean --force
+# 复制HF Web界面代码
+COPY app.py .
 
-# 复制应用代码
-COPY dist/ ./dist/
-COPY public/ ./public/
-
-# 创建非root用户
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-# 更改文件所有权
-RUN chown -R nextjs:nodejs /app
-
-# 切换到非root用户
-USER nextjs
+# 创建启动脚本
+RUN echo '#!/bin/bash\n\
+echo "🎨 启动即梦API HuggingFace Space..."\n\
+echo "📡 启动Node.js API服务在端口5100..."\n\
+echo "🌐 启动Flask Web界面在端口7860..."\n\
+# 后台启动Node.js API服务\n\
+npm start &\n\
+# 等待API服务启动\n\
+sleep 10\n\
+# 启动Flask Web界面\n\
+exec python3 app.py' > start.sh && chmod +x start.sh
 
 # 暴露端口
-EXPOSE 7860
+EXPOSE 5100 7860
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:7860/ping || exit 1
 
 # 启动应用
-CMD ["node", "dist/index.js"]
+CMD ["./start.sh"]

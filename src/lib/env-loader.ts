@@ -396,7 +396,7 @@ class EnvLoader {
     logger.info(`  🇨🇳 中国版API: ${cnUrls}`);
     logger.info(`  🇨🇳 中国版代理: ${cnProxy}`);
     logger.info(`  🌍 国际版API: ${usUrls}`);
-    logger.info(`  🌍 国际版代理: ${usProxy}`);
+    logger.info(`  🌍 国际版API备用地址: ${usProxy}`);
 
     // 显示URL数量
     const cnUrlCount = cnUrls.split(';').filter(url => url.trim()).length;

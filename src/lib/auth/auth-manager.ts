@@ -4,6 +4,7 @@ import { getJimengURL, getImageXURL, getCommerceURL } from "../config/url-manage
 import { DEFAULT_ASSISTANT_ID_CN, DEFAULT_ASSISTANT_ID_US, PLATFORM_CODE, VERSION_CODE, REGION_CN, REGION_US, BASE_URL_CN, BASE_URL_DREAMINA_US, BASE_URL_IMAGEX_US, BASE_URL_US_COMMERCE } from "@/api/consts/common.ts";
 import util from "../util.ts";
 import logger from "../logger.ts";
+import { getCachedParsedCookie, getCachedAuthInfo, getCookieCacheManager } from "./cookie-cache-manager.ts";
 
 /**
  * 认证信息接口
@@ -35,8 +36,6 @@ export interface AuthInfo {
  */
 export class AuthManager {
   private static instance: AuthManager;
-  private authCache: Map<string, AuthInfo> = new Map();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
 
   private constructor() {}
 
@@ -64,35 +63,38 @@ export class AuthManager {
       commerceUrl?: string;
     } = {}
   ): Promise<AuthInfo> {
-    // 检查缓存
-    const cacheKey = authString;
-    const cached = this.authCache.get(cacheKey);
-    if (cached && Date.now() - this.getCacheTimestamp(cacheKey) < this.CACHE_TTL) {
-      return cached;
-    }
-
     try {
-      // 解析cookie信息
-      let cookieInfo: ParsedCookieInfo;
+      // 使用缓存机制获取认证信息
+      return await getCachedAuthInfo(authString, async () => {
+        // 缓存未命中时，构建新的认证信息
+        logger.debug(`构建新的认证信息: ${authString.substring(0, 20)}...`);
 
-      if (this.isCookieString(authString)) {
-        // 新格式：cookie字符串
-        cookieInfo = CookieManager.parseCookie(authString);
-      } else {
-        // 旧格式：refreshToken（保持向后兼容）
-        cookieInfo = this.parseRefreshToken(authString);
-      }
+        // 解析cookie信息（使用缓存）
+        let cookieInfo: ParsedCookieInfo;
 
-      // 构建认证信息
-      const authInfo = await this.buildAuthInfo(cookieInfo, customOptions);
+        if (this.isCookieString(authString)) {
+          // 新格式：cookie字符串 - 使用增强解析器以获得更好的缓存
+          const enhancedCookieInfo = getCachedParsedCookie(authString);
+          // 转换为标准ParsedCookieInfo格式以保持兼容性
+          cookieInfo = {
+            token: enhancedCookieInfo.token,
+            isUS: enhancedCookieInfo.isUS,
+            region: enhancedCookieInfo.region,
+            cookieString: enhancedCookieInfo.cookieString,
+            additionalInfo: enhancedCookieInfo.additionalInfo
+          };
+        } else {
+          // 旧格式：refreshToken（保持向后兼容）
+          cookieInfo = this.parseRefreshToken(authString);
+        }
 
-      // 缓存结果
-      this.authCache.set(cacheKey, authInfo);
-      this.setCacheTimestamp(cacheKey);
+        // 构建认证信息
+        const authInfo = await this.buildAuthInfo(cookieInfo, customOptions);
 
-      logger.info(`认证信息构建完成: 地区=${authInfo.region}, AID=${authInfo.aid}`);
+        logger.info(`认证信息构建完成: 地区=${authInfo.region}, AID=${authInfo.aid}`);
 
-      return authInfo;
+        return authInfo;
+      });
     } catch (error) {
       logger.error(`构建认证信息失败: ${error.message}`);
       throw error;
@@ -253,57 +255,31 @@ export class AuthManager {
    * 刷新认证信息（清除缓存）
    */
   refreshAuthInfo(authString: string): void {
-    this.authCache.delete(authString);
-    this.removeCacheTimestamp(authString);
+    getCookieCacheManager().invalidateCache(authString);
+    logger.info(`认证信息缓存已刷新: ${authString.substring(0, 20)}...`);
   }
 
   /**
    * 清除所有缓存
    */
   clearCache(): void {
-    this.authCache.clear();
-    this.cacheTimestamps.clear();
-  }
-
-  /**
-   * 获取缓存时间戳
-   */
-  private cacheTimestamps: Map<string, number> = new Map();
-
-  private getCacheTimestamp(key: string): number {
-    return this.cacheTimestamps.get(key) || 0;
-  }
-
-  private setCacheTimestamp(key: string): void {
-    this.cacheTimestamps.set(key, Date.now());
-  }
-
-  private removeCacheTimestamp(key: string): void {
-    this.cacheTimestamps.delete(key);
+    getCookieCacheManager().clearAllCache();
+    logger.info("所有认证缓存已清除");
   }
 
   /**
    * 获取认证信息统计
    */
   getAuthStats(): {
-    cacheSize: number;
-    cacheEntries: Array<{
-      key: string;
-      timestamp: number;
-      age: number;
-      region: string;
-    }>;
+    cacheStats: any;
+    summary: string;
   } {
-    const entries = Array.from(this.authCache.entries()).map(([key, authInfo]) => ({
-      key: key.substring(0, 10) + "...", // 只显示前10个字符
-      timestamp: this.getCacheTimestamp(key),
-      age: Date.now() - this.getCacheTimestamp(key),
-      region: authInfo.region
-    }));
+    const cacheStats = getCookieCacheManager().getStats();
 
     return {
-      cacheSize: this.authCache.size,
-      cacheEntries: entries
+      cacheStats,
+      summary: `解析缓存: ${cacheStats.parse.size} 项 (命中率 ${cacheStats.parse.hitRate.toFixed(1)}%), ` +
+               `认证缓存: ${cacheStats.auth.size} 项 (命中率 ${cacheStats.auth.hitRate.toFixed(1)}%)`
     };
   }
 
@@ -389,6 +365,39 @@ export function getRegionFromAuth(authString: string): "cn" | "us" {
   } catch (error) {
     return "cn";
   }
+}
+
+/**
+ * 便捷函数：获取缓存统计信息
+ */
+export function getCookieCacheStatistics() {
+  return getCookieCacheManager().getStats();
+}
+
+/**
+ * 便捷函数：预热缓存
+ */
+export async function warmupCookieCache(authStrings: string[]): Promise<void> {
+  return getCookieCacheManager().warmupCache(authStrings);
+}
+
+/**
+ * 便捷函数：检查缓存状态
+ */
+export function checkCacheStatus(authString: string) {
+  return getCookieCacheManager().hasCache(authString);
+}
+
+/**
+ * 便捷函数：配置缓存参数
+ */
+export function configureCookieCache(config: {
+  parseResultTTL?: number;
+  authInfoTTL?: number;
+  maxCacheSize?: number;
+  cleanupInterval?: number;
+}) {
+  getCookieCacheManager().configure(config);
 }
 
 export default AuthManager.getInstance();

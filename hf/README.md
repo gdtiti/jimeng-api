@@ -1,3 +1,16 @@
+---
+title: 即梦API - AI图像和视频生成服务
+emoji: 🎨
+colorFrom: blue
+colorTo: purple
+sdk: docker
+sdk_version: "3.0.0"
+app_file: app.py
+pinned: false
+app_port: 7860
+license: mit
+---
+
 # 即梦API - HuggingFace Space部署
 
 ## 🚀 项目介绍
@@ -94,7 +107,7 @@ CACHE_ENABLED=true
 ```javascript
 const API_BASE = 'https://your-username-jimeng-api.hf.space';
 
-// 图像生成
+// 图像生成 - 使用新格式参数
 fetch(`${API_BASE}/v1/images/generations`, {
   method: 'POST',
   headers: {
@@ -104,9 +117,28 @@ fetch(`${API_BASE}/v1/images/generations`, {
   body: JSON.stringify({
     prompt: "美丽的少女，胶片感",
     model: "jimeng-4.0",
+    ratio: "1:1",        // 新增：图像比例
+    resolution: "2k",     // 新增：分辨率级别
     n: 1,
-    size: "1024x1024",
     response_format: "url"
+  })
+})
+.then(response => response.json())
+.then(data => console.log(data));
+
+// Nanobanana特色模型使用
+fetch(`${API_BASE}/v1/images/generations`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer us-your-international-token'
+  },
+  body: JSON.stringify({
+    prompt: "AI生成特色图像",
+    model: "nanobanana",
+    ratio: "1:1",        // nanobanana固定使用1:1
+    resolution: "2k",     // nanobanana固定使用2k
+    n: 1
   })
 })
 .then(response => response.json())
@@ -144,9 +176,19 @@ const cookie = "us-your-token-here";
 
 ### 支持的图像模型
 
-- `jimeng-4.0` - 高质量图像生成
-- `jimeng-4.0-visual` - 视觉增强版
-- `jimeng-4.0-anime` - 动漫风格
+**国内版模型:**
+
+- `jimeng-4.0` - 标准高质量模型
+- `jimeng-3.1` - 进阶版本
+- `jimeng-3.0` - 标准版本
+- `jimeng-2.1` - 轻量版本
+- `jimeng-xl-pro` - 专业版本
+
+**国际版模型 (需要国际站Cookie):**
+
+- `jimeng-4.0` - 国际标准版
+- `jimeng-3.0` - 国际标准版
+- `nanobanana` - ✨ **特色模型** (固定1024x1024分辨率，2k清晰度)
 
 ### 支持的分辨率
 

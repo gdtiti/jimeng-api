@@ -195,8 +195,8 @@ export class EnhancedCookieManager {
     const token = isUS ? refreshToken.substring(3) : refreshToken;
     const region = isUS ? "us" : "cn";
 
-    // 生成标准的cookie字符串
-    const generatedCookie = this.generateStandardCookie(token, region);
+    // 生成标准的cookie字符串（使用稳定的生成器）
+    const generatedCookie = this.generateStableCookie(token, region);
 
     const cookieItems = this.parseCookieItems(generatedCookie);
 
@@ -337,6 +337,57 @@ export class EnhancedCookieManager {
       `sessionid_ss=${token}`,
       `capcut_locale=${region === 'us' ? 'en' : 'zh-CN'}`
     ].join("; ");
+  }
+
+  /**
+   * 生成稳定的cookie字符串（基于token生成确定性值）
+   * 用于缓存场景，确保相同token生成相同的cookie
+   */
+  private static generateStableCookie(token: string, region: "cn" | "us"): string {
+    // 基于token生成确定性的设备ID和用户ID
+    const tokenHash = util.md5(token);
+    const seed = parseInt(tokenHash.substring(0, 8), 16);
+
+    // 生成稳定的随机值（基于token）
+    const WEB_ID = (seed % 9000000000000000000) + 1000000000000000000;
+    const USER_ID = this.generateStableUUID(tokenHash);
+
+    // 使用固定的基准时间，但加入token的影响
+    const baseTimestamp = 1700000000; // 2023年的时间戳
+    const timestamp = baseTimestamp + (seed % 86400 * 30); // 基于token的稳定时间戳
+
+    return [
+      `_tea_web_id=${WEB_ID}`,
+      `is_staff_user=false`,
+      `store-region=${region === 'us' ? 'us' : 'cn-gd'}`,
+      `store-region-src=uid`,
+      `sid_guard=${token}%7C${timestamp}%7C5184000%7CMon%2C+03-Feb-2025+08%3A17%3A09+GMT`,
+      `uid_tt=${USER_ID}`,
+      `uid_tt_ss=${USER_ID}`,
+      `sid_tt=${token}`,
+      `sessionid=${token}`,
+      `sessionid_ss=${token}`,
+      `capcut_locale=${region === 'us' ? 'en' : 'zh-CN'}`
+    ].join("; ");
+  }
+
+  /**
+   * 基于token生成稳定的UUID
+   */
+  private static generateStableUUID(tokenHash: string): string {
+    // 使用token哈希的前32位作为UUID的基础
+    const hex = tokenHash.substring(0, 32);
+
+    // 转换为UUID格式 (8-4-4-4-12)
+    const uuid = [
+      hex.substring(0, 8),
+      hex.substring(8, 12),
+      hex.substring(12, 16),
+      hex.substring(16, 20),
+      hex.substring(20, 32)
+    ].join('-');
+
+    return uuid;
   }
 
   /**

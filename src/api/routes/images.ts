@@ -50,12 +50,27 @@ export default {
       }
 
       const responseFormat = _.defaultTo(response_format, "url");
-      const imageUrls = await generateImages(model, prompt, {
+      const result = await generateImages(model, prompt, {
         ratio,
         resolution,
         sampleStrength,
         negativePrompt,
       }, token);
+
+      // 处理新的返回格式
+      let imageUrls = [];
+      if (Array.isArray(result)) {
+        // 兼容旧格式
+        imageUrls = result;
+      } else if (result && result.imageUrls) {
+        // 新格式
+        imageUrls = result.imageUrls;
+      } else {
+        // 如果结果格式异常，使用空数组
+        logger.error(`图片生成结果格式异常: ${JSON.stringify(result)}`);
+        imageUrls = [];
+      }
+
       let data = [];
       if (responseFormat == "b64_json") {
         data = (
@@ -66,9 +81,17 @@ export default {
           url,
         }));
       }
+
       return {
         created: util.unixTimestamp(),
         data,
+        // 添加调试信息
+        _debug: {
+          pollingStatus: result?.pollingStatus || 'unknown',
+          elapsedTime: result?.elapsedTime || 0,
+          imageCount: imageUrls.length,
+          originalResult: result
+        }
       };
     },
     

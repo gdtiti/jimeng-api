@@ -217,8 +217,9 @@ HTML_TEMPLATE = """
                         <label for="model">🤖 模型选择</label>
                         <select id="model" name="model">
                             <option value="jimeng-4.0">jimeng-4.0 (标准)</option>
-                            <option value="jimeng-4.0-visual">jimeng-4.0-visual (视觉增强)</option>
-                            <option value="jimeng-4.0-anime">jimeng-4.0-anime (动漫风格)</option>
+                            <option value="jimeng-3.0">jimeng-3.0 (进阶)</option>
+                            <option value="jimeng-2.1">jimeng-2.1 (快速)</option>
+                            <option value="nanobanana">🌟 nanobanana (特色)</option>
                         </select>
                     </div>
 
@@ -246,9 +247,9 @@ HTML_TEMPLATE = """
 
                     <div class="form-group">
                         <label for="token">🔑 Cookie Token</label>
-                        <input type="password" id="token" name="token" placeholder="输入你的Cookie Token (可选)">
+                        <input type="password" id="token" name="token" placeholder="输入你的Cookie Token">
                         <small style="color: #666; display: block; margin-top: 5px;">
-                            留空使用默认Token，或输入你的完整Cookie字符串
+                            国内站使用sessionid，国际站使用完整Cookie或us-前缀token
                         </small>
                     </div>
                 </div>
@@ -292,11 +293,12 @@ HTML_TEMPLATE = """
             resultContent.innerHTML = '<div class="status">🎨 正在生成图像，请稍候...</div>';
 
             try {
-                // 构建请求
+                // 构建请求 - 使用正确的API参数
                 const requestData = {
                     prompt: prompt,
                     model: model,
-                    size: getResolutionSize(resolution, ratio),
+                    ratio: ratio,
+                    resolution: resolution,
                     n: 1,
                     response_format: "url"
                 };
@@ -326,7 +328,8 @@ HTML_TEMPLATE = """
                         <div class="success">
                             <p>✅ 生成成功！</p>
                             <p><strong>模型:</strong> ${model}</p>
-                            <p><strong>分辨率:</strong> ${getResolutionSize(resolution, ratio)}</p>
+                            <p><strong>比例:</strong> ${ratio}</p>
+                            <p><strong>分辨率:</strong> ${resolution}</p>
                             <img src="${imageUrl}" alt="Generated image" style="max-width: 100%; border-radius: 8px;">
                             <p style="margin-top: 10px;">
                                 <a href="${imageUrl}" target="_blank" style="color: #667eea;">🔗 查看大图</a>
@@ -390,20 +393,15 @@ HTML_TEMPLATE = """
 </html>
 """
 
-def start_node_server():
-    """启动Node.js服务器"""
+def check_backend_health():
+    """检查后端服务健康状态"""
     try:
-        # 检查Node.js是否可用
-        subprocess.run(['node', '--version'], check=True, capture_output=True)
-
-        # 启动Node.js服务器
-        print("🚀 启动Node.js服务器...")
-        subprocess.run(['node', 'dist/index.js'], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"❌ 启动Node.js服务器失败: {e}")
-        print("请确保已正确构建dist目录")
-    except FileNotFoundError:
-        print("❌ 未找到Node.js，正在启动备用服务...")
+        # 检查API服务是否可用
+        response = requests.get('http://localhost:5100/ping', timeout=5)
+        return response.status_code == 200
+    except:
+        # 如果API服务不可用，尝试使用代理模式
+        return False
 
 @app.route('/')
 def index():
@@ -423,17 +421,25 @@ def ping():
 @app.route('/health')
 def health():
     """详细健康检查"""
+    backend_status = "online" if check_backend_health() else "offline"
     return jsonify({
         "status": "healthy",
         "service": "jimeng-api",
         "version": "1.3.0",
         "uptime": int(time.time()),
         "environment": os.getenv('NODE_ENV', 'production'),
+        "backend_status": backend_status,
         "endpoints": {
             "images": "/v1/images/generations",
-            "videos": "/v1/videos/generations",
+            "compositions": "/v1/images/compositions",
+            "chat": "/v1/chat/completions",
+            "models": "/v1/models",
             "ping": "/ping",
             "health": "/health"
+        },
+        "supported_models": {
+            "domestic": ["jimeng-4.0", "jimeng-3.1", "jimeng-3.0", "jimeng-2.1", "jimeng-xl-pro"],
+            "international": ["jimeng-4.0", "jimeng-3.0", "nanobanana"]
         }
     })
 
@@ -441,18 +447,52 @@ def health():
 def docs():
     """API文档"""
     return jsonify({
-        "title": "即梦API文档",
+        "title": "即梦API文档 v1.3.0",
         "version": "1.3.0",
+        "base_url": "https://your-space.hf.space",
+        "authentication": {
+            "type": "Bearer Token",
+            "description": "使用Cookie字符串作为Token"
+        },
         "endpoints": {
             "图像生成": {
                 "method": "POST",
                 "path": "/v1/images/generations",
-                "description": "生成AI图像"
+                "description": "文本生成AI图像",
+                "parameters": {
+                    "prompt": "string (required)",
+                    "model": "string",
+                    "ratio": "string (1:1, 16:9, 9:16, etc.)",
+                    "resolution": "string (1k, 2k, 4k)",
+                    "negative_prompt": "string (optional)",
+                    "sample_strength": "number (0.0-1.0)"
+                }
             },
-            "视频生成": {
+            "图生图": {
                 "method": "POST",
-                "path": "/v1/videos/generations",
-                "description": "生成AI视频"
+                "path": "/v1/images/compositions",
+                "description": "基于输入图像生成新图像",
+                "parameters": {
+                    "prompt": "string (required)",
+                    "images": "array (required)",
+                    "model": "string",
+                    "ratio": "string",
+                    "resolution": "string"
+                }
+            },
+            "聊天/视频": {
+                "method": "POST",
+                "path": "/v1/chat/completions",
+                "description": "聊天对话或视频生成",
+                "parameters": {
+                    "model": "string",
+                    "messages": "array"
+                }
+            },
+            "模型列表": {
+                "method": "GET",
+                "path": "/v1/models",
+                "description": "获取支持的模型列表"
             },
             "健康检查": {
                 "method": "GET",
@@ -460,9 +500,24 @@ def docs():
                 "description": "检查服务状态"
             }
         },
-        "authentication": {
-            "type": "Bearer Token",
-            "description": "使用Cookie字符串作为Token"
+        "supported_models": {
+            "domestic": {
+                "jimeng-4.0": "标准高质量模型",
+                "jimeng-3.1": "进阶版本",
+                "jimeng-3.0": "标准版本",
+                "jimeng-2.1": "轻量版本",
+                "jimeng-xl-pro": "专业版本"
+            },
+            "international": {
+                "jimeng-4.0": "国际标准版",
+                "jimeng-3.0": "国际标准版",
+                "nanobanana": "✨ 特色模型 (固定1024x1024)"
+            }
+        },
+        "cookie_formats": {
+            "domestic": "sessionid=your_session_id",
+            "international_simple": "us-your_session_id",
+            "international_complex": "sessionid=abc.....sid_tt=def.....capcut_locale=en....."
         }
     })
 
@@ -470,8 +525,8 @@ def docs():
 def proxy_api(path):
     """代理API请求到Node.js服务器"""
     try:
-        # 构建目标URL
-        target_url = f"http://localhost:3000/v1/{path}"
+        # 构建目标URL - 使用镜像的端口5100
+        target_url = f"http://localhost:5100/v1/{path}"
 
         # 获取请求数据
         method = request.method
@@ -499,7 +554,7 @@ def proxy_api(path):
     except requests.exceptions.ConnectionError:
         return jsonify({
             "error": {
-                "message": "Node.js服务未启动或连接失败",
+                "message": "API服务连接失败，请稍后重试",
                 "code": "SERVICE_UNAVAILABLE"
             }
         }), 503
@@ -515,19 +570,19 @@ if __name__ == '__main__':
     print("🎨 即梦API HuggingFace Space服务")
     print("=" * 50)
 
-    # 在后台线程中启动Node.js服务器
-    node_thread = threading.Thread(target=start_node_server, daemon=True)
-    node_thread.start()
-
-    # 等待一会儿让Node.js服务器启动
-    time.sleep(5)
+    # 检查后端服务状态
+    if check_backend_health():
+        print("✅ 后端API服务运行正常")
+    else:
+        print("⚠️  后端API服务可能未启动，但Web界面仍可用")
 
     # 启动Flask服务器
     port = int(os.environ.get('PORT', 7860))
     host = os.environ.get('HOST', '0.0.0.0')
 
-    print(f"🌐 Flask服务器启动在 http://{host}:{port}")
+    print(f"🌐 Web服务器启动在 http://{host}:{port}")
     print(f"📱 访问地址: https://your-space.hf.space")
+    print("🔗 API服务运行在端口5100")
     print("=" * 50)
 
     app.run(host=host, port=port, debug=False)

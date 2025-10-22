@@ -3,9 +3,9 @@
  */
 
 // API基础URL
-export const BASE_URL_CN = "https://jimeng.jianying.com";
+export const BASE_URL_CN = process.env.JIMENG_CN_URLS || "https://jimeng.jianying.com";
 
-export const BASE_URL_US_COMMERCE = "https://commerce.us.capcut.com";
+export const BASE_URL_US_COMMERCE = process.env.COMMERCE_US_URLS || "https://commerce.us.capcut.com";
 
 // 默认助手ID
 export const DEFAULT_ASSISTANT_ID_CN = "513695";

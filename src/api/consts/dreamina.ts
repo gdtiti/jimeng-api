@@ -1,7 +1,8 @@
 // src/api/consts/dreamina.ts
 
 // 即梦国际站API地址 - 支持多地址负载均衡
-export const BASE_URL_DREAMINA_US = "https://api-proxy-1.deno.dev/dreamina/us";
+// 从环境变量读取，如果没有配置则使用默认的镜像地址
+export const BASE_URL_DREAMINA_US = process.env.DREAMINA_US_PROXY || "https://api-proxy-1.deno.dev/dreamina/us";
 // 原始地址: "https://dreamina-api.us.capcut.com";
 
 // 图片处理服务地址
